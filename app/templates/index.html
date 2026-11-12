@@ -25,11 +25,17 @@
     .badge { display: inline-block; padding: .15em .7em; border-radius: 1em; font-size: .9em; color: #fff; white-space: nowrap; }
     .badge.active { background: var(--green); }
     .badge.cancelled { background: var(--gray); }
+    .badge.pending { background: #b8860b; }
     .deadline { font-weight: bold; color: #a33b00; white-space: nowrap; }
     .deadline.none { color: var(--gray); font-weight: normal; }
+    .deadline.pending { color: #b8860b; }
     ol.chain { margin: 0; padding-left: 1.4em; }
     ol.chain li { margin: .25em 0; line-height: 1.5; }
+    ol.chain li.anomaly { background: #fff6e5; border: 1px solid #f0d9a8; border-radius: 5px; padding: .35em .6em; list-style-position: inside; }
     ol.chain a { color: var(--blue); }
+    ul.anomalies { margin: 0; padding-left: 1.2em; }
+    ul.anomalies li { margin: .35em 0; line-height: 1.5; }
+    ul.anomalies a { color: var(--blue); word-break: break-all; }
     .muted { color: var(--gray); font-size: .9em; }
     .round-status { white-space: nowrap; }
     .round-status.success { color: var(--green); }
@@ -41,7 +47,7 @@
 </head>
 <body>
   <h1>截标时间核对工具</h1>
-  <p class="subtitle">输入与示例公告站同结构的列表网址，抓取同源分页与详情页，按项目串起公告链，核对真实截标时间。</p>
+  <p class="subtitle">输入与示例公告站同结构的列表网址，抓取同源分页与详情页，按公告编号核对更正/撤销引用（存在、同项目、发布更早），按项目串起公告链，核对真实截标时间。引用异常的项目显示“待核实”及异常来源。</p>
 
   <form class="scrape" method="post" action="/scrape">
     <input type="text" name="start_url" value="{{ default_start_url }}" placeholder="http://sample-site:8000/list.html" required>
@@ -63,22 +69,34 @@
   <p class="muted">结果来自第 {{ latest_ok['id'] }} 轮采集（{{ latest_ok['finished_at'] }} 完成，来源：<a href="{{ latest_ok['start_url']|public_url }}">{{ latest_ok['start_url']|public_url }}</a>）。</p>
   <table>
     <thead>
-      <tr><th>项目编号</th><th>最终状态</th><th>当前截标时间</th><th>公告链（按发布时间，点击来源查看依据）</th></tr>
+      <tr><th>项目编号</th><th>最终状态</th><th>当前截标时间</th><th>异常来源</th><th>公告链（按发布时间，点击来源查看依据）</th></tr>
     </thead>
     <tbody>
       {% for p in projects %}
       <tr>
         <td><strong>{{ p.project_no }}</strong></td>
-        <td><span class="badge {{ 'active' if p.status == '进行中' else 'cancelled' }}">{{ p.status }}</span></td>
+        <td><span class="badge {{ 'active' if p.status == '进行中' else ('cancelled' if p.status == '停办' else 'pending') }}">{{ p.status }}</span></td>
         <td>
-          {% if p.status == '停办' %}<span class="deadline none">已停办</span>
+          {% if p.status == '待核实' %}<span class="deadline pending">待核实</span>
+          {% elif p.status == '停办' %}<span class="deadline none">已停办</span>
           {% elif p.deadline %}<span class="deadline">{{ p.deadline }}</span>
           {% else %}<span class="deadline none">未注明</span>{% endif %}
         </td>
         <td>
+          {% if p.anomalies %}
+          <ul class="anomalies">
+            {% for an in p.anomalies %}
+            <li>【{{ an.type_label }}】{{ an.notice_no }}（{{ an.publish_time }}）<br>
+              <span class="muted">{{ an.reason }}</span><br>
+              <a href="{{ an.url|public_url }}" target="_blank" rel="noopener">异常来源</a></li>
+            {% endfor %}
+          </ul>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>
           <ol class="chain">
             {% for c in p.chain %}
-            <li>[{{ c.publish_time }}] 【{{ c.type_label }}】{{ c.notice_no }} — {{ c.note }}
+            <li{% if c.anomaly %} class="anomaly"{% endif %}>[{{ c.publish_time }}] 【{{ c.type_label }}】{{ c.notice_no }} — {{ c.note }}
               <a href="{{ c.url|public_url }}" target="_blank" rel="noopener">来源</a></li>
             {% endfor %}
           </ol>
